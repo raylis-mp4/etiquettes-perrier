@@ -37,6 +37,11 @@ const COLONNES = ["A", "B", "C"];
 const NB_BANDES_ATTENDU = 7;
 const ETIQUETTES_PAR_PAGE = NB_BANDES_ATTENDU * COLONNES.length; // 21
 const NOM_FEUILLE_MODELE = "Etiquettes Vierge V2";
+const PAPIER_A4 = 9;
+
+// 14 espaces à la place de l'heure quand elle est laissée vide, pour garder
+// "Equipe" à la même position visuelle qu'un remplissage manuel du formulaire papier.
+const ESPACEMENT_HEURE_VIDE = " ".repeat(14);
 
 // Repère la ligne de départ de chaque bande d'étiquettes en cherchant le
 // titre "PRELEVEMENTS" en colonne A, plutôt que de calculer sa position par
@@ -110,8 +115,8 @@ function remplirEtiquette(ws, basesDeBande, etiquette, indexDansPage, infos) {
     injecterValeur(celluleDateLigne.value, dateAffichee) + " " + (infos.ligne || "");
 
   const celluleHeureEquipe = ws.getCell(`${col}${base + 4}`);
-  celluleHeureEquipe.value =
-    injecterValeur(celluleHeureEquipe.value, infos.heure) + (infos.equipe || "");
+  const valeurHeure = infos.heure || ESPACEMENT_HEURE_VIDE;
+  celluleHeureEquipe.value = injecterValeur(celluleHeureEquipe.value, valeurHeure) + (infos.equipe || "");
 
   const celluleProduction = ws.getCell(`${col}${base + 5}`);
   celluleProduction.value = injecterValeur(celluleProduction.value, infos.production);
@@ -120,10 +125,22 @@ function remplirEtiquette(ws, basesDeBande, etiquette, indexDansPage, infos) {
   celluleArticle.value = injecterValeur(celluleArticle.value, infos.article);
 }
 
+// Vide entièrement un emplacement d'étiquette non utilisé (au-delà du nombre
+// réellement demandé), pour ne pas laisser le texte d'exemple du modèle sur
+// une étiquette qui ne sera pas remplie.
+function viderEtiquette(ws, basesDeBande, indexDansPage) {
+  const bande = Math.floor(indexDansPage / COLONNES.length);
+  const col = COLONNES[indexDansPage % COLONNES.length];
+  const base = basesDeBande[bande];
+  for (let offset = 0; offset <= 6; offset++) {
+    ws.getCell(`${col}${base + offset}`).value = "";
+  }
+}
+
 /**
  * Écrit les valeurs des étiquettes à imprimer dans la feuille modèle déjà
  * chargée (mutation en place). Les emplacements au-delà du nombre
- * d'étiquettes demandées ne sont pas touchés.
+ * d'étiquettes demandées sont vidés.
  *
  * @param {ExcelJS.Workbook} workbook classeur avec la feuille modèle déjà chargée
  * @param {Array<{etiquette: string, quantite: number}>} resultats
@@ -133,6 +150,20 @@ export function remplirClasseur(workbook, resultats, infos) {
   const ws = chargerFeuilleModele(workbook);
   ws.name = "Etiquettes";
   const basesDeBande = detecterBasesDeBande(ws);
+
+  // Format papier A4 explicite : l'extraction de la feuille modèle depuis le
+  // classeur d'origine ne conserve pas les réglages d'imprimante
+  // (printerSettings.bin, propres au poste qui a créé le fichier et non
+  // portables). Sans ça, un lecteur/imprimante par défaut sur un autre
+  // format (Letter, plus court) fait déborder le contenu sur une 2e page.
+  ws.pageSetup.paperSize = PAPIER_A4;
+  // ExcelJS réinjecte toujours fitToWidth/fitToHeight="1" à l'écriture, même
+  // quand le fichier d'origine ne les avait pas : ça peut pousser certains
+  // lecteurs à re-proportionner tout le rendu ("Ajuster à la page"), ce qui
+  // fausse les tailles de colonnes/lignes réellement imprimées. On les
+  // neutralise pour revenir strictement à l'échelle fixe (96 %) du modèle.
+  ws.pageSetup.fitToWidth = undefined;
+  ws.pageSetup.fitToHeight = undefined;
 
   const etiquettesAPlat = [];
   for (const r of resultats) {
@@ -145,9 +176,13 @@ export function remplirClasseur(workbook, resultats, infos) {
     );
   }
 
-  etiquettesAPlat.slice(0, ETIQUETTES_PAR_PAGE).forEach((etiquette, index) => {
-    remplirEtiquette(ws, basesDeBande, etiquette, index, infos);
-  });
+  for (let index = 0; index < ETIQUETTES_PAR_PAGE; index++) {
+    if (index < etiquettesAPlat.length) {
+      remplirEtiquette(ws, basesDeBande, etiquettesAPlat[index], index, infos);
+    } else {
+      viderEtiquette(ws, basesDeBande, index);
+    }
+  }
 
   return workbook;
 }

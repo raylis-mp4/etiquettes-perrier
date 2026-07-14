@@ -228,7 +228,7 @@ export default function App() {
             youssouf.benladjal@gmail.com
           </a>
           <br />
-          v0.1
+          v0.2
         </footer>
       </div>
     </div>
