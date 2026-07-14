@@ -1,80 +1,115 @@
 import ExcelJS from "exceljs";
 
-// Padding utilisé pour pousser "Equipe" vers la droite sur la ligne Heure/Equipe,
-// comme dans le fichier Etiquettes_prélèvements.xlsm d'origine.
+// ---------------------------------------------------------------------------
+// Calibration papier : Lyreco 151342 = équivalent exact du gabarit Avery L7160
+// (planche A4, 3 colonnes x 7 lignes, 21 étiquettes/feuille). Cotes officielles
+// du fabricant (et non plus des valeurs extraites — possiblement mal calées —
+// du fichier Etiquettes_prélèvements.xlsm d'origine) :
+//   - largeur étiquette ....... 63,5 mm
+//   - hauteur étiquette ....... 38,1 mm  (= pas vertical : aucun espace entre
+//                                          deux étiquettes dans une même colonne)
+//   - marge du haut ........... 15,09 mm
+//   - marge de gauche ......... 7,2 mm
+//   - pas horizontal .......... 66,68 mm (colonne à colonne)
+// L'écart horizontal entre deux étiquettes (66,68 - 63,5 = 3,18 mm) est
+// matérialisé par une colonne "gouttière" étroite entre chaque colonne
+// d'étiquette, pour que le texte centré (titre) reste centré sur l'étiquette
+// physique réelle et non sur le pas complet.
+// ---------------------------------------------------------------------------
+
+const MM_PAR_POUCE = 25.4;
+const PT_PAR_POUCE = 72;
+const PX_PAR_POUCE = 96; // référence Excel pour la conversion largeur de colonne <-> pixels
+
+const LARGEUR_ETIQUETTE_MM = 63.5;
+const HAUTEUR_ETIQUETTE_MM = 38.1;
+const MARGE_HAUT_MM = 15.09;
+const MARGE_GAUCHE_MM = 7.2;
+const PAS_HORIZONTAL_MM = 66.68;
+const ECART_HORIZONTAL_MM = PAS_HORIZONTAL_MM - LARGEUR_ETIQUETTE_MM; // 3,18 mm
+
+const LIGNES_PAR_ETIQUETTE = 7; // titre / type / vide / date-ligne / heure-equipe / production / article
+
+function mmVersPoints(mm) {
+  return (mm / MM_PAR_POUCE) * PT_PAR_POUCE;
+}
+
+function mmVersPouces(mm) {
+  return mm / MM_PAR_POUCE;
+}
+
+// Formule standard Excel (Calibri 11 @ 96 dpi, largeur du "0" = 7px, marge
+// interne = 5px) pour convertir une largeur physique en unité de colonne Excel :
+// pixels = largeur_colonne * 7 + 5  =>  largeur_colonne = (pixels - 5) / 7
+function mmVersLargeurColonne(mm) {
+  const px = (mm / MM_PAR_POUCE) * PX_PAR_POUCE;
+  return (px - 5) / 7;
+}
+
+const LARGEUR_COL_ETIQUETTE = mmVersLargeurColonne(LARGEUR_ETIQUETTE_MM); // ≈ 33.5714
+const LARGEUR_COL_ECART = mmVersLargeurColonne(ECART_HORIZONTAL_MM); // ≈ 1.0027
+
+// Hauteur de chacune des 7 lignes d'une étiquette : le bloc doit occuper
+// EXACTEMENT 38,1 mm, donc on divise à parts égales (aucune ligne vide
+// superflue entre deux étiquettes consécutives dans une même colonne).
+const HAUTEUR_LIGNE_PT = mmVersPoints(HAUTEUR_ETIQUETTE_MM) / LIGNES_PAR_ETIQUETTE; // = 108/7 ≈ 15.4286 pt
+
+// Padding utilisé pour pousser "Equipe" vers la droite sur la ligne Heure/Equipe.
 const PADDING = "                        ";
 
-// Polices et alignements repris à l'identique du classeur Etiquettes_prélèvements.xlsm
-// (feuille "Etiquettes V2", colonnes A/B/C) : titre et type en Arial 8 gras centré,
-// les 4 lignes d'infos en Arial 10 gras alignées à gauche.
 const FONT_TITRE = { name: "Arial", size: 8, bold: true };
 const FONT_STANDARD = { name: "Arial", size: 10, bold: true };
 const ALIGN_CENTRE = { horizontal: "center", vertical: "middle", wrapText: true };
 const ALIGN_GAUCHE = { vertical: "middle", wrapText: true };
 
-// Hauteur exacte de chaque ligne 2 à 64, extraite du XML brut de Etiquettes_
-// prélèvements.xlsm. Le classeur contient plusieurs feuilles quasi identiques, mais
-// seule "Etiquettes V2" est visible (les autres, dont "Etiquettes Vierge", sont
-// masquées) — c'est donc elle qui s'affiche/s'imprime par défaut à l'ouverture du
-// fichier, et ses valeurs priment en cas de divergence entre feuilles (une seule
-// ligne diffère réellement : la ligne 38, 8.25 sur "Etiquettes V2" vs 17.25 sur la
-// feuille masquée). Ce n'est PAS un motif uniforme répété : les espacements entre
-// bandes varient réellement (la bande 4, par ex., a 4 lignes vides au lieu de 2) —
-// les reproduire telles quelles est indispensable pour que chaque étiquette
-// s'imprime exactement à la même position physique que sur le fichier d'origine
-// (étiquettes pré-découpées).
-// null = pas de hauteur explicite dans l'original (la ligne utilise defaultRowHeight).
-const HAUTEURS_LIGNES = [
-  11.25, 11.25, 11.25, null, 11.25, 11.25, 11.25, 15.75, null, // lignes 2-10  (bande 1)
-  11.25, 11.25, 11.25, null, 11.25, 11.25, 11.25, 15.75, null, // lignes 11-19 (bande 2)
-  11.25, 11.25, 11.25, null, 11.25, 11.25, 11.25, 19.5, 11.25, // lignes 20-28 (bande 3)
-  11.25, 11.25, 11.25, null, 11.25, 11.25, 11.25, 11.25, 17.25, 8.25, 10.5, // lignes 29-39 (bande 4, espacement de 4 lignes)
-  11.25, 11.25, 11.25, null, 11.25, 11.25, 11.25, 17.25, 12.75, // lignes 40-48 (bande 5)
-  11.25, 11.25, 11.25, null, 11.25, 11.25, 11.25, 12, 12.75, // lignes 49-57  (bande 6)
-  11.25, 11.25, 11.25, null, 11.25, 11.25, 11.25, // lignes 58-64 (bande 7, dernière — pas d'espacement après)
-];
+// Colonnes de la feuille : A=étiquette, B=gouttière, C=étiquette, D=gouttière,
+// E=étiquette. Seules les colonnes A/C/E portent du texte.
+const COL_INDEX = { 0: 1, 1: 3, 2: 5 };
 
-// Ligne de début de chaque bande "PRELEVEMENTS" dans la feuille de référence.
-// Espacement irrégulier entre bandes 4 et 5 (11 lignes au lieu de 9) — voir ci-dessus.
-const DEBUTS_BANDE = [2, 11, 20, 29, 40, 49, 58];
-const BANDES_PAR_PAGE = DEBUTS_BANDE.length;
-const ETIQUETTES_PAR_PAGE = BANDES_PAR_PAGE * 3;
-const DERNIERE_LIGNE = 64;
+const PREMIERE_LIGNE = 2;
+const BANDES_PAR_PAGE = 7;
+const ETIQUETTES_PAR_PAGE = BANDES_PAR_PAGE * 3; // 21
 
-const COL_INDEX = { 0: 1, 1: 2, 2: 3 }; // A=1, B=2, C=3
+// Ligne de début de chaque bande : 7 lignes par étiquette, sans aucun
+// espacement entre bandes (le pas vertical réel est exactement 38,1 mm).
+const DEBUTS_BANDE = Array.from(
+  { length: BANDES_PAR_PAGE },
+  (_, i) => PREMIERE_LIGNE + i * LIGNES_PAR_ETIQUETTE
+);
+const DERNIERE_LIGNE = DEBUTS_BANDE[BANDES_PAR_PAGE - 1] + LIGNES_PAR_ETIQUETTE - 1; // 50
 
 function creerFeuille(workbook, nom) {
   const ws = workbook.addWorksheet(nom);
-  ws.columns = [{ width: 33.88671875 }, { width: 35.6640625 }, { width: 31.6640625 }];
+  ws.columns = [
+    { width: LARGEUR_COL_ETIQUETTE }, // A
+    { width: LARGEUR_COL_ECART }, // B (gouttière)
+    { width: LARGEUR_COL_ETIQUETTE }, // C
+    { width: LARGEUR_COL_ECART }, // D (gouttière)
+    { width: LARGEUR_COL_ETIQUETTE }, // E
+  ];
 
-  // Mise en page d'impression identique à Etiquettes_prélèvements.xlsm, feuille
-  // "Etiquettes V2" — la SEULE feuille non masquée du classeur, donc celle qui
-  // s'affiche et s'imprime réellement par défaut à l'ouverture du fichier (les
-  // autres feuilles, dont "Etiquettes Vierge", sont masquées et ne sont que des
-  // gabarits internes légèrement différents). Sans ça, Excel applique ses
-  // marges/échelle par défaut, ce qui crée un grand espace vide en haut de page.
-  ws.properties.defaultRowHeight = 14.4;
-  ws.pageSetup.margins = {
-    top: 0.19685039370078741,
-    bottom: 0,
-    left: 0.5511811023622047,
-    right: 0.2362204724409449,
-    header: 0.31496062992125984,
-    footer: 0.31496062992125984,
-  };
+  ws.pageSetup.paperSize = 9; // A4
   ws.pageSetup.orientation = "portrait";
-  ws.pageSetup.scale = 96;
+  ws.pageSetup.scale = 100; // calibré sur les cotes réelles : pas d'échelle à corriger
+  ws.pageSetup.margins = {
+    top: mmVersPouces(MARGE_HAUT_MM),
+    left: mmVersPouces(MARGE_GAUCHE_MM),
+    // Marges restantes déduites de l'espace non utilisé sur une page A4
+    // (210 x 297 mm) une fois les 21 étiquettes placées, pour qu'Excel
+    // n'essaie jamais de réduire l'échelle pour "faire tenir" le contenu.
+    bottom: mmVersPouces(297 - (MARGE_HAUT_MM + BANDES_PAR_PAGE * HAUTEUR_ETIQUETTE_MM)),
+    right: mmVersPouces(210 - (MARGE_GAUCHE_MM + 3 * LARGEUR_ETIQUETTE_MM + 2 * ECART_HORIZONTAL_MM)),
+    header: 0,
+    footer: 0,
+  };
 
-  // Zone d'impression fixée à A2:C64, comme les dimensions exactes de la feuille de
-  // référence : garantit que chaque feuille imprime toujours le même format (3
-  // colonnes, 64 lignes), qu'elle soit entièrement remplie ou non.
-  ws.pageSetup.printArea = `A2:C${DERNIERE_LIGNE}`;
+  // Zone d'impression fixée à A2:E{DERNIERE_LIGNE} : 3 colonnes d'étiquettes
+  // (A/C/E) + 2 colonnes de gouttière (B/D), 7 bandes de 7 lignes.
+  ws.pageSetup.printArea = `A${PREMIERE_LIGNE}:E${DERNIERE_LIGNE}`;
 
-  // Pré-formate la hauteur exacte de chaque ligne (2 à 64), remplie ou non, pour que
-  // la zone d'impression ait toujours le même rendu physique que l'original.
-  HAUTEURS_LIGNES.forEach((hauteur, i) => {
-    if (hauteur !== null) ws.getRow(2 + i).height = hauteur;
-  });
+  for (let ligne = PREMIERE_LIGNE; ligne <= DERNIERE_LIGNE; ligne++) {
+    ws.getRow(ligne).height = HAUTEUR_LIGNE_PT;
+  }
 
   return ws;
 }
@@ -111,13 +146,11 @@ function remplirEtiquette(ws, etiquette, indexDansPage, infos) {
 }
 
 /**
- * Génère le classeur Excel dans le format des étiquettes de prélèvement :
- * blocs de 7 lignes (titre / type / [ligne vide] / date-ligne / heure-equipe /
- * production / article), répétés sur 3 colonnes (A, B, C) et 7 bandes par feuille
- * (positions et espacements exacts de Etiquettes_prélèvements.xlsm, voir
- * HAUTEURS_LIGNES/DEBUTS_BANDE). Chaque feuille est bornée à A2:C64 (21 étiquettes
- * max) ; au-delà, une nouvelle feuille est créée ("Etiquettes 2", "Etiquettes 3", ...)
- * plutôt que de dépasser la ligne 64 sur la même feuille.
+ * Génère le classeur Excel au format des étiquettes de prélèvement, calibré
+ * sur les cotes officielles du gabarit Lyreco 151342 / Avery L7160 (3 x 7,
+ * 21 étiquettes/feuille A4). Chaque feuille est bornée à A2:E{DERNIERE_LIGNE}
+ * (21 étiquettes max) ; au-delà, une nouvelle feuille est créée
+ * ("Etiquettes 2", "Etiquettes 3", ...).
  *
  * @param {Array<{etiquette: string, quantite: number}>} resultats
  * @param {{date: string, heure: string, ligne: string, equipe: string, production: string, article: string}} infos
