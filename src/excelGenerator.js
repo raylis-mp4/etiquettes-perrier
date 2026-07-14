@@ -6,8 +6,8 @@ import ExcelJS from "exceljs";
 // du fabricant (et non plus des valeurs extraites — possiblement mal calées —
 // du fichier Etiquettes_prélèvements.xlsm d'origine) :
 //   - largeur étiquette ....... 63,5 mm
-//   - hauteur étiquette ....... 38,1 mm  (= pas vertical : aucun espace entre
-//                                          deux étiquettes dans une même colonne)
+//   - hauteur étiquette ....... 38,1 mm  (= pas vertical réel entre deux
+//                                          étiquettes dans une même colonne)
 //   - marge du haut ........... 15,09 mm
 //   - marge de gauche ......... 7,2 mm
 //   - pas horizontal .......... 66,68 mm (colonne à colonne)
@@ -28,7 +28,12 @@ const MARGE_GAUCHE_MM = 7.2;
 const PAS_HORIZONTAL_MM = 66.68;
 const ECART_HORIZONTAL_MM = PAS_HORIZONTAL_MM - LARGEUR_ETIQUETTE_MM; // 3,18 mm
 
-const LIGNES_PAR_ETIQUETTE = 7; // titre / type / vide / date-ligne / heure-equipe / production / article
+const LIGNES_CONTENU = 7; // titre / type / vide / date-ligne / heure-equipe / production / article
+// Petite bande vide réservée en bas de chaque étiquette pour que le texte ne
+// touche jamais la ligne de découpe, SANS changer le pas vertical réel
+// (38,1 mm) : elle est prélevée sur les 7 lignes de contenu, pas ajoutée en plus.
+const ECART_VERTICAL_MM = 2;
+const LIGNES_PAR_ETIQUETTE = LIGNES_CONTENU + 1;
 
 function mmVersPoints(mm) {
   return (mm / MM_PAR_POUCE) * PT_PAR_POUCE;
@@ -49,10 +54,11 @@ function mmVersLargeurColonne(mm) {
 const LARGEUR_COL_ETIQUETTE = mmVersLargeurColonne(LARGEUR_ETIQUETTE_MM); // ≈ 33.5714
 const LARGEUR_COL_ECART = mmVersLargeurColonne(ECART_HORIZONTAL_MM); // ≈ 1.0027
 
-// Hauteur de chacune des 7 lignes d'une étiquette : le bloc doit occuper
-// EXACTEMENT 38,1 mm, donc on divise à parts égales (aucune ligne vide
-// superflue entre deux étiquettes consécutives dans une même colonne).
-const HAUTEUR_LIGNE_PT = mmVersPoints(HAUTEUR_ETIQUETTE_MM) / LIGNES_PAR_ETIQUETTE; // = 108/7 ≈ 15.4286 pt
+// Hauteur des 7 lignes de contenu + de la bande tampon : le total doit occuper
+// EXACTEMENT 38,1 mm (le pas vertical réel), réparti à parts égales entre les
+// lignes de contenu, moins la bande tampon prélevée à la fin.
+const HAUTEUR_LIGNE_CONTENU_PT = mmVersPoints(HAUTEUR_ETIQUETTE_MM - ECART_VERTICAL_MM) / LIGNES_CONTENU;
+const HAUTEUR_LIGNE_ECART_PT = mmVersPoints(ECART_VERTICAL_MM);
 
 // Padding utilisé pour pousser "Equipe" vers la droite sur la ligne Heure/Equipe.
 const PADDING = "                        ";
@@ -70,13 +76,14 @@ const PREMIERE_LIGNE = 2;
 const BANDES_PAR_PAGE = 7;
 const ETIQUETTES_PAR_PAGE = BANDES_PAR_PAGE * 3; // 21
 
-// Ligne de début de chaque bande : 7 lignes par étiquette, sans aucun
-// espacement entre bandes (le pas vertical réel est exactement 38,1 mm).
+// Ligne de début de chaque bande : 8 lignes par étiquette (7 de contenu + 1
+// tampon), le total du bloc restant exactement égal au pas vertical réel
+// (38,1 mm), donc sans aucun espacement supplémentaire entre bandes.
 const DEBUTS_BANDE = Array.from(
   { length: BANDES_PAR_PAGE },
   (_, i) => PREMIERE_LIGNE + i * LIGNES_PAR_ETIQUETTE
 );
-const DERNIERE_LIGNE = DEBUTS_BANDE[BANDES_PAR_PAGE - 1] + LIGNES_PAR_ETIQUETTE - 1; // 50
+const DERNIERE_LIGNE = DEBUTS_BANDE[BANDES_PAR_PAGE - 1] + LIGNES_PAR_ETIQUETTE - 1; // 57
 
 function creerFeuille(workbook, nom) {
   const ws = workbook.addWorksheet(nom);
@@ -110,12 +117,16 @@ function creerFeuille(workbook, nom) {
   };
 
   // Zone d'impression fixée à A2:E{DERNIERE_LIGNE} : 3 colonnes d'étiquettes
-  // (A/C/E) + 2 colonnes de gouttière (B/D), 7 bandes de 7 lignes.
+  // (A/C/E) + 2 colonnes de gouttière (B/D), 7 bandes de 8 lignes (7 de
+  // contenu + 1 tampon).
   ws.pageSetup.printArea = `A${PREMIERE_LIGNE}:E${DERNIERE_LIGNE}`;
 
-  for (let ligne = PREMIERE_LIGNE; ligne <= DERNIERE_LIGNE; ligne++) {
-    ws.getRow(ligne).height = HAUTEUR_LIGNE_PT;
-  }
+  DEBUTS_BANDE.forEach((base) => {
+    for (let offset = 0; offset < LIGNES_CONTENU; offset++) {
+      ws.getRow(base + offset).height = HAUTEUR_LIGNE_CONTENU_PT;
+    }
+    ws.getRow(base + LIGNES_CONTENU).height = HAUTEUR_LIGNE_ECART_PT;
+  });
 
   return ws;
 }
