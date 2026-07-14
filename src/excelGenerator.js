@@ -3,28 +3,41 @@ import ExcelJS from "exceljs";
 // ---------------------------------------------------------------------------
 // Calibration papier : Lyreco 151342 = équivalent exact du gabarit Avery L7160
 // (planche A4, 3 colonnes x 7 lignes, 21 étiquettes/feuille). Cotes officielles
-// du fabricant (et non plus des valeurs extraites — possiblement mal calées —
-// du fichier Etiquettes_prélèvements.xlsm d'origine) :
+// du fabricant :
 //   - largeur étiquette ....... 63,5 mm
 //   - hauteur étiquette ....... 38,1 mm  (= pas vertical réel entre deux
 //                                          étiquettes dans une même colonne)
-//   - marge du haut ........... 15,09 mm
-//   - marge de gauche ......... 7,2 mm
 //   - pas horizontal .......... 66,68 mm (colonne à colonne)
 // L'écart horizontal entre deux étiquettes (66,68 - 63,5 = 3,18 mm) est
 // matérialisé par une colonne "gouttière" étroite entre chaque colonne
 // d'étiquette, pour que le texte centré (titre) reste centré sur l'étiquette
 // physique réelle et non sur le pas complet.
+//
+// Marges : le gabarit officiel donne une marge du haut (15,09 mm) et une
+// marge de gauche (7,2 mm), mais ces valeurs collent la grille tout à
+// gauche/en haut de la page et ne laissent quasiment aucune marge de l'autre
+// côté (5,94 mm à droite, 15,21 mm en bas sur une A4). Beaucoup d'imprimantes
+// ont une zone non imprimable supérieure à ça sur au moins un bord, ce qui
+// fait basculer la dernière colonne/ligne sur une page supplémentaire.
+// On CENTRE donc la grille sur la page (ws.pageSetup.horizontalCentered /
+// verticalCentered) : Excel répartit alors l'espace disponible à parts
+// égales des deux côtés (≈ 6,57 mm à gauche/droite, ≈ 15,15 mm en haut/bas),
+// ce qui maximise la plus petite des deux marges — donc la marge de sécurité
+// réellement disponible face à la zone non imprimable de l'imprimante — au
+// lieu de la sacrifier entièrement d'un côté. L'écart avec les cotes
+// officielles (± 0,6 mm à gauche, ± 0,06 mm en haut) est imperceptible à
+// l'impression.
 // ---------------------------------------------------------------------------
 
 const MM_PAR_POUCE = 25.4;
 const PT_PAR_POUCE = 72;
 const PX_PAR_POUCE = 96; // référence Excel pour la conversion largeur de colonne <-> pixels
 
+const PAGE_LARGEUR_MM = 210; // A4 portrait
+const PAGE_HAUTEUR_MM = 297;
+
 const LARGEUR_ETIQUETTE_MM = 63.5;
 const HAUTEUR_ETIQUETTE_MM = 38.1;
-const MARGE_HAUT_MM = 15.09;
-const MARGE_GAUCHE_MM = 7.2;
 const PAS_HORIZONTAL_MM = 66.68;
 const ECART_HORIZONTAL_MM = PAS_HORIZONTAL_MM - LARGEUR_ETIQUETTE_MM; // 3,18 mm
 
@@ -76,6 +89,15 @@ const PREMIERE_LIGNE = 2;
 const BANDES_PAR_PAGE = 7;
 const ETIQUETTES_PAR_PAGE = BANDES_PAR_PAGE * 3; // 21
 
+// Encombrement réel de la grille de 21 étiquettes (hors marges).
+const LARGEUR_CONTENU_MM = 3 * LARGEUR_ETIQUETTE_MM + 2 * ECART_HORIZONTAL_MM; // 196,86 mm
+const HAUTEUR_CONTENU_MM = BANDES_PAR_PAGE * HAUTEUR_ETIQUETTE_MM; // 266,7 mm
+
+// Marges de secours (utilisées si un lecteur ignore horizontalCentered /
+// verticalCentered) : la moitié de l'espace restant de chaque côté.
+const MARGE_HORIZONTALE_MM = (PAGE_LARGEUR_MM - LARGEUR_CONTENU_MM) / 2; // ≈ 6,57 mm
+const MARGE_VERTICALE_MM = (PAGE_HAUTEUR_MM - HAUTEUR_CONTENU_MM) / 2; // ≈ 15,15 mm
+
 // Ligne de début de chaque bande : 8 lignes par étiquette (7 de contenu + 1
 // tampon), le total du bloc restant exactement égal au pas vertical réel
 // (38,1 mm), donc sans aucun espacement supplémentaire entre bandes.
@@ -98,20 +120,17 @@ function creerFeuille(workbook, nom) {
   ws.pageSetup.paperSize = 9; // A4
   ws.pageSetup.orientation = "portrait";
   ws.pageSetup.scale = 100; // calibré sur les cotes réelles : pas d'échelle à corriger
-  // Seules les marges haut/gauche sont dictées par le gabarit (elles fixent
-  // la position de la 1ère étiquette). Les marges bas/droite n'ont aucune
-  // valeur de référence à respecter : elles ne font que réserver l'espace
-  // vide après la dernière étiquette. On les fixe volontairement petites
-  // MAIS avec une marge de sécurité confortable par rapport à l'espace
-  // réellement disponible (5,94 mm à droite, 15,21 mm en bas), pour ne
-  // jamais dépendre d'un calcul au mm près qu'un arrondi Excel ou une zone
-  // non imprimable d'imprimante pourrait faire déborder sur une page
-  // supplémentaire.
+  // Grille centrée sur la page (voir commentaire en tête de fichier) : Excel
+  // répartit l'espace disponible à parts égales de chaque côté, ce qui
+  // maximise la marge de sécurité face à la zone non imprimable de
+  // l'imprimante plutôt que de la concentrer d'un seul côté.
+  ws.pageSetup.horizontalCentered = true;
+  ws.pageSetup.verticalCentered = true;
   ws.pageSetup.margins = {
-    top: mmVersPouces(MARGE_HAUT_MM),
-    left: mmVersPouces(MARGE_GAUCHE_MM),
-    bottom: mmVersPouces(5),
-    right: mmVersPouces(2),
+    top: mmVersPouces(MARGE_VERTICALE_MM),
+    left: mmVersPouces(MARGE_HORIZONTALE_MM),
+    bottom: mmVersPouces(MARGE_VERTICALE_MM),
+    right: mmVersPouces(MARGE_HORIZONTALE_MM),
     header: 0,
     footer: 0,
   };
