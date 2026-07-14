@@ -227,6 +227,8 @@ export default function App() {
           <a href="mailto:youssouf.benladjal@gmail.com" className="underline hover:text-slate-500">
             youssouf.benladjal@gmail.com
           </a>
+          <br />
+          v0.1
         </footer>
       </div>
     </div>
