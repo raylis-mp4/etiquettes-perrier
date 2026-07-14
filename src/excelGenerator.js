@@ -91,14 +91,20 @@ function creerFeuille(workbook, nom) {
   ws.pageSetup.paperSize = 9; // A4
   ws.pageSetup.orientation = "portrait";
   ws.pageSetup.scale = 100; // calibré sur les cotes réelles : pas d'échelle à corriger
+  // Seules les marges haut/gauche sont dictées par le gabarit (elles fixent
+  // la position de la 1ère étiquette). Les marges bas/droite n'ont aucune
+  // valeur de référence à respecter : elles ne font que réserver l'espace
+  // vide après la dernière étiquette. On les fixe volontairement petites
+  // MAIS avec une marge de sécurité confortable par rapport à l'espace
+  // réellement disponible (5,94 mm à droite, 15,21 mm en bas), pour ne
+  // jamais dépendre d'un calcul au mm près qu'un arrondi Excel ou une zone
+  // non imprimable d'imprimante pourrait faire déborder sur une page
+  // supplémentaire.
   ws.pageSetup.margins = {
     top: mmVersPouces(MARGE_HAUT_MM),
     left: mmVersPouces(MARGE_GAUCHE_MM),
-    // Marges restantes déduites de l'espace non utilisé sur une page A4
-    // (210 x 297 mm) une fois les 21 étiquettes placées, pour qu'Excel
-    // n'essaie jamais de réduire l'échelle pour "faire tenir" le contenu.
-    bottom: mmVersPouces(297 - (MARGE_HAUT_MM + BANDES_PAR_PAGE * HAUTEUR_ETIQUETTE_MM)),
-    right: mmVersPouces(210 - (MARGE_GAUCHE_MM + 3 * LARGEUR_ETIQUETTE_MM + 2 * ECART_HORIZONTAL_MM)),
+    bottom: mmVersPouces(5),
+    right: mmVersPouces(2),
     header: 0,
     footer: 0,
   };
