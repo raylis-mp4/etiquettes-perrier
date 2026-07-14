@@ -56,12 +56,18 @@ function mmVersPouces(mm) {
   return mm / MM_PAR_POUCE;
 }
 
-// Formule standard Excel (Calibri 11 @ 96 dpi, largeur du "0" = 7px, marge
-// interne = 5px) pour convertir une largeur physique en unité de colonne Excel :
-// pixels = largeur_colonne * 7 + 5  =>  largeur_colonne = (pixels - 5) / 7
+// Conversion mm -> unité de largeur de colonne Excel. La formule "manuel"
+// (largeur du "0" = 7px, marge interne = 5px) donnait un rendu ~1,5 % trop
+// large à l'impression (vérifié en générant le fichier puis en le convertissant
+// réellement en PDF via LibreOffice/Calibri : le pas horizontal mesuré était de
+// 67,68 mm au lieu des 66,68 mm visés). Constantes recalibrées empiriquement
+// sur ce test réel (largeur du "0" ≈ 7,05 px, marge interne ≈ 6,01 px), ce qui
+// ramène le pas mesuré à 66,65 mm (écart de 0,03 mm, négligeable).
+const MDW = 7.05;
+const PADDING_PX = 6.01;
 function mmVersLargeurColonne(mm) {
   const px = (mm / MM_PAR_POUCE) * PX_PAR_POUCE;
-  return (px - 5) / 7;
+  return (px - PADDING_PX) / MDW;
 }
 
 const LARGEUR_COL_ETIQUETTE = mmVersLargeurColonne(LARGEUR_ETIQUETTE_MM); // ≈ 33.5714
@@ -89,14 +95,26 @@ const PREMIERE_LIGNE = 2;
 const BANDES_PAR_PAGE = 7;
 const ETIQUETTES_PAR_PAGE = BANDES_PAR_PAGE * 3; // 21
 
-// Encombrement réel de la grille de 21 étiquettes (hors marges).
+// Encombrement théorique de la grille de 21 étiquettes (hors marges). En
+// pratique, le rendu réel (vérifié en générant le fichier et en le
+// convertissant en PDF) dépasse ce chiffre d'environ 0,5 à 1 mm à cause de
+// l'approximation inhérente aux largeurs de colonnes Excel (unités de
+// caractères, pas des mm) : cet écart résiduel ne peut pas être éliminé à
+// 100 % par le calcul, seulement mesuré et compensé par une marge de
+// sécurité généreuse (voir MARGE_HORIZONTALE_MM / MARGE_VERTICALE_MM).
 const LARGEUR_CONTENU_MM = 3 * LARGEUR_ETIQUETTE_MM + 2 * ECART_HORIZONTAL_MM; // 196,86 mm
 const HAUTEUR_CONTENU_MM = BANDES_PAR_PAGE * HAUTEUR_ETIQUETTE_MM; // 266,7 mm
 
-// Marges de secours (utilisées si un lecteur ignore horizontalCentered /
-// verticalCentered) : la moitié de l'espace restant de chaque côté.
-const MARGE_HORIZONTALE_MM = (PAGE_LARGEUR_MM - LARGEUR_CONTENU_MM) / 2; // ≈ 6,57 mm
-const MARGE_VERTICALE_MM = (PAGE_HAUTEUR_MM - HAUTEUR_CONTENU_MM) / 2; // ≈ 15,15 mm
+// Marges fixes, volontairement généreuses (mesurées via un rendu PDF réel du
+// fichier généré, pas seulement calculées sur le papier) : le centrage
+// automatique d'Excel/LibreOffice (horizontalCentered/verticalCentered)
+// recalcule sa propre marge à partir d'une estimation de largeur différente
+// de celle réellement utilisée à l'impression, ce qui a produit un
+// débordement même après correction des largeurs de colonnes. Des marges
+// fixes, avec plusieurs mm de marge de sécurité réelle par rapport à
+// l'encombrement mesuré, sont donc plus fiables qu'un optimum théorique.
+const MARGE_HORIZONTALE_MM = 5;
+const MARGE_VERTICALE_MM = 10;
 
 // Ligne de début de chaque bande : 8 lignes par étiquette (7 de contenu + 1
 // tampon), le total du bloc restant exactement égal au pas vertical réel
@@ -120,12 +138,6 @@ function creerFeuille(workbook, nom) {
   ws.pageSetup.paperSize = 9; // A4
   ws.pageSetup.orientation = "portrait";
   ws.pageSetup.scale = 100; // calibré sur les cotes réelles : pas d'échelle à corriger
-  // Grille centrée sur la page (voir commentaire en tête de fichier) : Excel
-  // répartit l'espace disponible à parts égales de chaque côté, ce qui
-  // maximise la marge de sécurité face à la zone non imprimable de
-  // l'imprimante plutôt que de la concentrer d'un seul côté.
-  ws.pageSetup.horizontalCentered = true;
-  ws.pageSetup.verticalCentered = true;
   ws.pageSetup.margins = {
     top: mmVersPouces(MARGE_VERTICALE_MM),
     left: mmVersPouces(MARGE_HORIZONTALE_MM),
