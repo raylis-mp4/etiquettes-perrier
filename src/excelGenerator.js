@@ -63,9 +63,9 @@ const LARGEUR_COLONNE_ETIQUETTE = (PAS_HORIZONTAL_MM * 3.78 - 5) / 7;
 // dans ce fichier) ; sur 3 colonnes, l'écart cumulé suffisait à faire
 // déborder la 3e colonne sur une 2e page même après correction de la marge
 // de droite. Valeur testée en conditions réelles (Youssouf, impression
-// physique) : réduire uniquement la largeur de C à 31,11 fait disparaître
-// la 2e page, sans déplacer le contenu de A/B/C qui reste bien aligné.
-const LARGEUR_COLONNE_C = 31.11;
+// physique) : réduire uniquement la largeur de C fait disparaître la 2e
+// page, sans déplacer le contenu de A/B/C qui reste bien aligné.
+const LARGEUR_COLONNE_C = 27.0;
 
 // Conversion inverse (largeur Excel -> mm), pour recalculer la marge de
 // droite à partir des largeurs de colonnes réellement appliquées ci-dessus.
