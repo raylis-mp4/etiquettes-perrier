@@ -12,8 +12,8 @@ import modeleUrl from "./assets/modele-etiquettes.xlsx?url";
 // contente d'écrire des valeurs dans des cellules déjà stylées. Seules
 // exceptions, corrigées après coup car le modèle d'origine n'était pas fiable
 // sur ces points précis : le format papier (voir PAPIER_A4), la largeur des
-// colonnes A/B/C et les marges gauche/droite (voir plus bas, valeurs ajustées
-// avec Youssouf par impressions réelles successives).
+// colonnes (voir LARGEUR_COLONNE_ETIQUETTE et LARGEUR_COLONNE_C) et la marge
+// de droite qui en découle.
 //
 // Structure de la feuille modèle (vérifiée sur le fichier d'origine) :
 // grille de 7 bandes x 3 colonnes (A/B/C) = 21 étiquettes, une colonne =
@@ -42,20 +42,38 @@ const ETIQUETTES_PAR_PAGE = NB_BANDES_ATTENDU * COLONNES.length; // 21
 const NOM_FEUILLE_MODELE = "Etiquettes Vierge V2";
 const PAPIER_A4 = 9;
 const MM_PAR_POUCE = 25.4;
+const LARGEUR_PAGE_A4_MM = 210;
 
-// Largeurs de colonnes A/B/C et marges gauche/droite : valeurs ajustées
-// directement par Youssouf sur la base d'impressions réelles successives
-// (le calcul théorique mm -> largeur de colonne Excel approche mais ne
-// tombe jamais exactement juste). Ne pas recalculer ces valeurs à partir
-// d'une formule : ce sont des constantes réglées à la main.
-const LARGEUR_COLONNE_A = 33.11;
-const LARGEUR_COLONNE_B = 33.22;
-const LARGEUR_COLONNE_C = 30.89;
-const LARGEURS_COLONNES = { A: LARGEUR_COLONNE_A, B: LARGEUR_COLONNE_B, C: LARGEUR_COLONNE_C };
-const MARGE_GAUCHE_MM = 7.5;
-// Marge de droite laissée telle quelle (inchangée par ce réglage) : c'est la
-// valeur qui résultait du calcul automatique précédent, maintenant figée.
-const MARGE_DROITE_MM = 21.704558730158737;
+// Les 3 colonnes du modèle d'origine (A=33.89, B=34.0, C=31.66) n'ont jamais
+// été calibrées de façon uniforme horizontalement, contrairement aux
+// hauteurs de ligne verticalement justes. Sur le papier pré-découpé Lyreco
+// 151342 (équivalent Avery L7160), le pas horizontal entre les 3 colonnes
+// d'étiquettes physiques est parfaitement uniforme : 66,68 mm. On force donc
+// les colonnes A et B à une largeur identique calculée à partir de ce pas,
+// conversion mm -> largeur de colonne Excel (largeur_px = mm * 3.78 ;
+// largeur_excel = (largeur_px - 5) / 7).
+const PAS_HORIZONTAL_MM = 66.68;
+const LARGEUR_COLONNE_ETIQUETTE = (PAS_HORIZONTAL_MM * 3.78 - 5) / 7;
+
+// La position de départ de la colonne C (donc l'alignement de son contenu
+// sur l'étiquette physique) ne dépend que de la largeur cumulée de A + B,
+// jamais de la largeur propre de C : cette dernière ne détermine que
+// jusqu'où s'étend la page imprimée. La formule mm -> largeur Excel
+// surestime légèrement la largeur réelle rendue (déjà documenté ailleurs
+// dans ce fichier) ; sur 3 colonnes, l'écart cumulé suffisait à faire
+// déborder la 3e colonne sur une 2e page même après correction de la marge
+// de droite. Valeur testée en conditions réelles (Youssouf, impression
+// physique) : réduire uniquement la largeur de C fait disparaître la 2e
+// page, sans déplacer le contenu de A/B/C qui reste bien aligné.
+const LARGEUR_COLONNE_C = 27.0;
+
+// Conversion inverse (largeur Excel -> mm), pour recalculer la marge de
+// droite à partir des largeurs de colonnes réellement appliquées ci-dessus.
+function largeurColonneVersMm(largeurExcel) {
+  return (largeurExcel * 7 + 5) / 3.78;
+}
+const LARGEUR_TOTALE_COLONNES_MM =
+  2 * largeurColonneVersMm(LARGEUR_COLONNE_ETIQUETTE) + largeurColonneVersMm(LARGEUR_COLONNE_C);
 
 // 14 espaces à la place de l'heure quand elle est laissée vide, pour garder
 // "Equipe" à la même position visuelle qu'un remplissage manuel du formulaire papier.
@@ -183,14 +201,28 @@ export function remplirClasseur(workbook, resultats, infos) {
   ws.pageSetup.fitToWidth = undefined;
   ws.pageSetup.fitToHeight = undefined;
 
-  // Largeurs de colonnes A/B/C et marge de gauche : valeurs réglées à la
-  // main (voir LARGEURS_COLONNES / MARGE_GAUCHE_MM). Marge de droite
-  // laissée à sa valeur actuelle (MARGE_DROITE_MM), non recalculée.
+  // Largeurs de colonnes : A et B au pas physique réel (voir
+  // LARGEUR_COLONNE_ETIQUETTE), qui détermine où commence le contenu de
+  // chaque colonne — le modèle d'origine avait 3 largeurs différentes,
+  // ce qui décalait le contenu de sa case physique de la 1re à la 3e
+  // colonne. C est délibérément plus étroite (voir LARGEUR_COLONNE_C) :
+  // ça ne déplace pas le début de son contenu, seulement la largeur totale
+  // imprimée de la page.
   COLONNES.forEach((col) => {
-    ws.getColumn(col).width = LARGEURS_COLONNES[col];
+    ws.getColumn(col).width = col === "C" ? LARGEUR_COLONNE_C : LARGEUR_COLONNE_ETIQUETTE;
   });
-  ws.pageSetup.margins.left = MARGE_GAUCHE_MM / MM_PAR_POUCE;
-  ws.pageSetup.margins.right = MARGE_DROITE_MM / MM_PAR_POUCE;
+
+  // Marge de droite recalculée pour que les colonnes élargies rentrent sur
+  // une page A4 (210 mm), compte tenu de la marge de gauche RÉELLE du
+  // modèle (11 mm, pas 7,2 mm — cette dernière valeur venait de l'ancien
+  // générateur "from scratch" abandonné) et de l'échelle d'impression du
+  // modèle (96 %, inchangée). Calculée à partir de la marge de gauche
+  // effectivement lue dans le fichier plutôt qu'une valeur en dur, pour
+  // rester juste si le modèle change.
+  const margeGaucheMm = ws.pageSetup.margins.left * MM_PAR_POUCE;
+  const echelle = (ws.pageSetup.scale || 100) / 100;
+  const margeDroiteMm = LARGEUR_PAGE_A4_MM - margeGaucheMm - LARGEUR_TOTALE_COLONNES_MM * echelle;
+  ws.pageSetup.margins.right = margeDroiteMm / MM_PAR_POUCE;
 
   const etiquettesAPlat = [];
   for (const r of resultats) {
