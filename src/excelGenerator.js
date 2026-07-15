@@ -40,6 +40,8 @@ const NB_BANDES_ATTENDU = 7;
 const ETIQUETTES_PAR_PAGE = NB_BANDES_ATTENDU * COLONNES.length; // 21
 const NOM_FEUILLE_MODELE = "Etiquettes Vierge V2";
 const PAPIER_A4 = 9;
+const MM_PAR_POUCE = 25.4;
+const LARGEUR_PAGE_A4_MM = 210;
 
 // Les 3 colonnes du modèle d'origine (A=33.89, B=34.0, C=31.66) n'ont jamais
 // été calibrées de façon uniforme horizontalement, contrairement aux
@@ -51,6 +53,7 @@ const PAPIER_A4 = 9;
 // largeur_excel = (largeur_px - 5) / 7).
 const PAS_HORIZONTAL_MM = 66.68;
 const LARGEUR_COLONNE_ETIQUETTE = (PAS_HORIZONTAL_MM * 3.78 - 5) / 7;
+const LARGEUR_TOTALE_COLONNES_MM = PAS_HORIZONTAL_MM * COLONNES.length; // 200,04 mm
 
 // 14 espaces à la place de l'heure quand elle est laissée vide, pour garder
 // "Equipe" à la même position visuelle qu'un remplissage manuel du formulaire papier.
@@ -185,6 +188,18 @@ export function remplirClasseur(workbook, resultats, infos) {
   COLONNES.forEach((col) => {
     ws.getColumn(col).width = LARGEUR_COLONNE_ETIQUETTE;
   });
+
+  // Marge de droite recalculée pour que les 3 colonnes élargies (200,04 mm
+  // au pas physique réel) rentrent sur une page A4 (210 mm), compte tenu de
+  // la marge de gauche RÉELLE du modèle (11 mm, pas 7,2 mm — cette dernière
+  // valeur venait de l'ancien générateur "from scratch" abandonné) et de
+  // l'échelle d'impression du modèle (96 %, inchangée). Calculée à partir de
+  // la marge de gauche effectivement lue dans le fichier plutôt qu'une
+  // valeur en dur, pour rester juste si le modèle change.
+  const margeGaucheMm = ws.pageSetup.margins.left * MM_PAR_POUCE;
+  const echelle = (ws.pageSetup.scale || 100) / 100;
+  const margeDroiteMm = LARGEUR_PAGE_A4_MM - margeGaucheMm - LARGEUR_TOTALE_COLONNES_MM * echelle;
+  ws.pageSetup.margins.right = margeDroiteMm / MM_PAR_POUCE;
 
   const etiquettesAPlat = [];
   for (const r of resultats) {
