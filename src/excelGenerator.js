@@ -7,10 +7,12 @@ import modeleUrl from "./assets/modele-etiquettes.xlsx?url";
 // Le fichier src/assets/modele-etiquettes.xlsx est un export exact et non
 // modifié de la feuille "Etiquettes Vierge V2" du classeur d'origine
 // Etiquettes_prélèvements.xlsm (macros retirées, elles ne servaient qu'à
-// faire ce que ce fichier fait déjà en JS). Toute la mise en forme — largeurs
-// de colonnes, hauteurs de lignes, polices, marges, échelle d'impression —
-// vient de ce fichier et n'est JAMAIS recalculée ni réécrite ici : ce module
-// se contente d'écrire des valeurs dans des cellules déjà stylées.
+// faire ce que ce fichier fait déjà en JS). Hauteurs de lignes, polices et
+// marges viennent de ce fichier et ne sont jamais recalculées : ce module se
+// contente d'écrire des valeurs dans des cellules déjà stylées. Seules
+// exceptions, corrigées après coup car le modèle d'origine n'était pas fiable
+// sur ces deux points précis : le format papier (voir PAPIER_A4) et la
+// largeur des colonnes (voir LARGEUR_COLONNE_ETIQUETTE).
 //
 // Structure de la feuille modèle (vérifiée sur le fichier d'origine) :
 // grille de 7 bandes x 3 colonnes (A/B/C) = 21 étiquettes, une colonne =
@@ -38,6 +40,17 @@ const NB_BANDES_ATTENDU = 7;
 const ETIQUETTES_PAR_PAGE = NB_BANDES_ATTENDU * COLONNES.length; // 21
 const NOM_FEUILLE_MODELE = "Etiquettes Vierge V2";
 const PAPIER_A4 = 9;
+
+// Les 3 colonnes du modèle d'origine (A=33.89, B=34.0, C=31.66) n'ont jamais
+// été calibrées de façon uniforme horizontalement, contrairement aux
+// hauteurs de ligne verticalement justes. Sur le papier pré-découpé Lyreco
+// 151342 (équivalent Avery L7160), le pas horizontal entre les 3 colonnes
+// d'étiquettes physiques est parfaitement uniforme : 66,68 mm. On force donc
+// les 3 colonnes à une largeur identique calculée à partir de ce pas,
+// conversion mm -> largeur de colonne Excel (largeur_px = mm * 3.78 ;
+// largeur_excel = (largeur_px - 5) / 7).
+const PAS_HORIZONTAL_MM = 66.68;
+const LARGEUR_COLONNE_ETIQUETTE = (PAS_HORIZONTAL_MM * 3.78 - 5) / 7;
 
 // 14 espaces à la place de l'heure quand elle est laissée vide, pour garder
 // "Equipe" à la même position visuelle qu'un remplissage manuel du formulaire papier.
@@ -164,6 +177,14 @@ export function remplirClasseur(workbook, resultats, infos) {
   // neutralise pour revenir strictement à l'échelle fixe (96 %) du modèle.
   ws.pageSetup.fitToWidth = undefined;
   ws.pageSetup.fitToHeight = undefined;
+
+  // Largeurs de colonnes uniformes (voir LARGEUR_COLONNE_ETIQUETTE) : le
+  // modèle d'origine a 3 largeurs différentes (A/B/C), ce qui décale de plus
+  // en plus le contenu de sa case physique de la 1re à la 3e colonne sur le
+  // papier pré-découpé.
+  COLONNES.forEach((col) => {
+    ws.getColumn(col).width = LARGEUR_COLONNE_ETIQUETTE;
+  });
 
   const etiquettesAPlat = [];
   for (const r of resultats) {
