@@ -7,14 +7,16 @@ import modeleUrl from "./assets/modele-etiquettes.xlsx?url";
 // Le fichier src/assets/modele-etiquettes.xlsx est un export exact et non
 // modifié de la feuille "Etiquettes Vierge V2" du classeur d'origine
 // Etiquettes_prélèvements.xlsm (macros retirées, elles ne servaient qu'à
-// faire ce que ce fichier fait déjà en JS). Hauteurs de lignes, polices et
-// marges viennent de ce fichier et ne sont jamais recalculées : ce module se
+// faire ce que ce fichier fait déjà en JS). Hauteurs de lignes et polices
+// viennent de ce fichier et ne sont jamais recalculées : ce module se
 // contente d'écrire des valeurs dans des cellules déjà stylées. Seules
 // exceptions, corrigées après coup car le modèle d'origine n'était pas fiable
-// sur ces points précis : le format papier (voir PAPIER_A4), la largeur des
-// colonnes (voir LARGEUR_COLONNE_ETIQUETTE) et l'ajustement automatique à la
-// page (voir plus bas) pour garantir une seule page quelle que soit la
-// largeur réellement rendue par Excel.
+// sur ces points précis : le format papier (voir PAPIER_A4), les marges de
+// page et la largeur des colonnes (voir MARGES_PAGE et LARGEURS_COLONNES,
+// valeurs reprises de la boîte de dialogue Page Setup et des propriétés de
+// colonnes du classeur d'origine) et l'ajustement automatique à la page (voir
+// plus bas) pour garantir une seule page quelle que soit la largeur
+// réellement rendue par Excel.
 //
 // Structure de la feuille modèle (vérifiée sur le fichier d'origine) :
 // grille de 7 bandes x 3 colonnes (A/B/C) = 21 étiquettes, une colonne =
@@ -43,16 +45,32 @@ const ETIQUETTES_PAR_PAGE = NB_BANDES_ATTENDU * COLONNES.length; // 21
 const NOM_FEUILLE_MODELE = "Etiquettes Vierge V2";
 const PAPIER_A4 = 9;
 
-// Les 3 colonnes du modèle d'origine (A=33.89, B=34.0, C=31.66) n'ont jamais
-// été calibrées de façon uniforme horizontalement, contrairement aux
-// hauteurs de ligne verticalement justes. Sur le papier pré-découpé Lyreco
-// 151342 (équivalent Avery L7160), le pas horizontal entre les 3 colonnes
-// d'étiquettes physiques est parfaitement uniforme : 66,68 mm. On force donc
-// les 3 colonnes à une largeur identique calculée à partir de ce pas,
-// conversion mm -> largeur de colonne Excel (largeur_px = mm * 3.78 ;
-// largeur_excel = (largeur_px - 5) / 7).
-const PAS_HORIZONTAL_MM = 66.68;
-const LARGEUR_COLONNE_ETIQUETTE = (PAS_HORIZONTAL_MM * 3.78 - 5) / 7;
+// Marges horizontales (onglet Margins de la boîte de dialogue Page Setup),
+// reprises telles quelles depuis le classeur Excel d'origine. ExcelJS attend
+// les marges en pouces, d'où la conversion cm -> pouces (cm / 2.54). Les
+// marges verticales (top/bottom/header/footer) ne sont volontairement pas
+// touchées : elles restent celles déjà présentes dans le modèle.
+const cmVersPouces = (cm) => cm / 2.54;
+const MARGES_HORIZONTALES = {
+  left: cmVersPouces(1.4),
+  right: cmVersPouces(0.6),
+};
+
+// Largeurs de colonnes du classeur d'origine (unités de largeur de colonne
+// Excel), gardées distinctes entre A/B/C — pas d'uniformisation.
+const LARGEURS_COLONNES_ORIGINE = { A: 33.14, B: 35.0, C: 31.0 };
+
+// Écart supplémentaire demandé entre la colonne 1 (A) et la colonne 2 (B) :
+// +2 mm, ajoutés à la largeur de la colonne A (ce qui repousse d'autant le
+// début de la colonne B). Conversion mm -> largeur de colonne Excel avec la
+// même correspondance que celle utilisée pour les largeurs ci-dessus
+// (largeur_px = mm * 96/25.4 ; largeur_excel = largeur_px / 7).
+const PX_PAR_MM = 96 / 25.4;
+const GAP_SUPPLEMENTAIRE_A_B_MM = 2;
+const LARGEURS_COLONNES = {
+  ...LARGEURS_COLONNES_ORIGINE,
+  A: LARGEURS_COLONNES_ORIGINE.A + (GAP_SUPPLEMENTAIRE_A_B_MM * PX_PAR_MM) / 7,
+};
 
 // 14 espaces à la place de l'heure quand elle est laissée vide, pour garder
 // "Equipe" à la même position visuelle qu'un remplissage manuel du formulaire papier.
@@ -82,8 +100,11 @@ function detecterBasesDeBande(ws) {
 // ANALYSE LABO) et quel texte y écrire. Validé avec Youssouf : St-10.000
 // reprend le style court (comme HYDROTHEQUE), Étiquette Labo Noter US
 // s'imprime "PRODUCTION US" en style compact (comme ANALYSE LABO).
+// "Hydrothèque" seul déroge à la taille de police par défaut de son
+// emplacement (Arial 10) : on la force à Arial 8 via taillePolice, sans
+// toucher St-10.000 qui reste sur le même emplacement à 10pt.
 const TYPES_ETIQUETTE = {
-  "Hydrothèque": { offset: 1, texte: " HYDROTHEQUE " },
+  "Hydrothèque": { offset: 1, texte: " HYDROTHEQUE ", taillePolice: 8 },
   "Analyses Labo": { offset: 2, texte: "ANALYSE LABO" },
   "St-10.000": { offset: 1, texte: "ST-10.000" },
   "Étiquette Labo Noter US": { offset: 2, texte: "PRODUCTION US" },
@@ -118,7 +139,20 @@ function remplirEtiquette(ws, basesDeBande, etiquette, indexDansPage, infos) {
   const base = basesDeBande[bande];
 
   const autreOffset = style.offset === 1 ? 2 : 1;
-  ws.getCell(`${col}${base + style.offset}`).value = style.texte;
+  const celluleType = ws.getCell(`${col}${base + style.offset}`);
+  celluleType.value = style.texte;
+  if (style.taillePolice) {
+    // Toutes les cellules d'un même emplacement (offset 1 ou 2, sur les 7
+    // bandes x 3 colonnes) partagent le même objet de style tant qu'aucune
+    // n'a été stylée individuellement : assigner uniquement `.font`
+    // mute cet objet partagé et change la taille sur TOUTES ces cellules
+    // (y compris St-10.000, qui doit rester à 10pt). Il faut donc réassigner
+    // `.style` en entier pour détacher cette cellule du style partagé.
+    celluleType.style = {
+      ...celluleType.style,
+      font: { ...celluleType.font, size: style.taillePolice },
+    };
+  }
   ws.getCell(`${col}${base + autreOffset}`).value = "";
 
   const dateAffichee = infos.date
@@ -173,24 +207,22 @@ export function remplirClasseur(workbook, resultats, infos) {
   // format (Letter, plus court) fait déborder le contenu sur une 2e page.
   ws.pageSetup.paperSize = PAPIER_A4;
 
-  // Ajustement automatique à 1 page de large x 1 page de haut : les calculs
-  // manuels de largeurs de colonnes/marges en mm ne collent jamais
-  // exactement à la largeur réellement rendue par Excel (variable selon la
-  // police par défaut du classeur), ce qui a fait déborder le contenu sur
-  // une 2e page à plusieurs reprises. On laisse Excel calculer lui-même
-  // l'échelle nécessaire plutôt que de deviner une marge/largeur en mm.
-  ws.pageSetup.fitToPage = true;
-  ws.pageSetup.fitToWidth = 1;
-  ws.pageSetup.fitToHeight = 1;
+  // Marges gauche/droite reprises telles quelles depuis Page Setup du
+  // classeur d'origine (voir MARGES_HORIZONTALES). Les marges verticales
+  // (top/bottom/header/footer) ne sont pas touchées : on part de celles déjà
+  // présentes dans le modèle et on ne modifie que left/right.
+  ws.pageSetup.margins = { ...ws.pageSetup.margins, ...MARGES_HORIZONTALES };
 
-  // Largeurs de colonnes uniformes (voir LARGEUR_COLONNE_ETIQUETTE) : le
-  // modèle d'origine a 3 largeurs différentes (A/B/C), ce qui décale de plus
-  // en plus le contenu de sa case physique de la 1re à la 3e colonne sur le
-  // papier pré-découpé. L'ajustement automatique à la page (ci-dessus) gère
-  // le fait que le total tienne sur une page ; ceci ne gère que l'alignement
-  // relatif entre les 3 colonnes.
+  // Pas de mise à l'échelle automatique : impression à 95 % de la taille
+  // réelle ("Ajust to: 95% normal size").
+  ws.pageSetup.fitToPage = false;
+  ws.pageSetup.scale = 95;
+
+  // Largeurs de colonnes reprises telles quelles depuis les propriétés de
+  // colonnes du classeur d'origine (voir LARGEURS_COLONNES) : A, B et C
+  // gardent chacune leur propre largeur, sans uniformisation.
   COLONNES.forEach((col) => {
-    ws.getColumn(col).width = LARGEUR_COLONNE_ETIQUETTE;
+    ws.getColumn(col).width = LARGEURS_COLONNES[col];
   });
 
   const etiquettesAPlat = [];

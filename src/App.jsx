@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Droplets, Printer, ChevronRight, Flag, Download } from "lucide-react";
+import { Droplets, Printer, ChevronRight, Flag, Download, Rocket } from "lucide-react";
 import { QUAND, POTYPES, calculer } from "./rulesEngine.js";
 import { telechargerClasseur } from "./excelGenerator.js";
 
@@ -222,13 +222,40 @@ export default function App() {
           </section>
         </div>
 
+        <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-1 flex items-center gap-2">
+            <Rocket size={16} className="text-teal-700" />
+            <h2 className="text-sm font-bold text-slate-700">Roadmap — améliorations futures</h2>
+          </div>
+          <p className="mb-4 text-xs text-slate-400">
+            Pistes envisagées, par ordre de priorité. En attente de validation par Perrier avant tout développement.
+          </p>
+          <ol className="space-y-2.5">
+            {[
+              "Mise en place de l'outil sur le portail Perrier",
+              "Panneau admin pour modifier le nombre, l'horaire ou la raison des prélèvements",
+              "Impression directe, sans passer par un téléchargement du fichier",
+              "Scanner le code-barre de l'ordre de production pour préremplir les champs",
+              "Déployer le logiciel d'impression d'étiquettes sur chaque ligne et poste",
+              "Améliorer le visuel du site",
+            ].map((item, i) => (
+              <li key={item} className="flex items-start gap-2.5 text-sm text-slate-700">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-50 text-[11px] font-bold text-teal-700">
+                  {i + 1}
+                </span>
+                {item}
+              </li>
+            ))}
+          </ol>
+        </section>
+
         <footer className="mt-8 text-center text-[11px] text-slate-400">
           Développé par Youssouf BENLADJAL —{" "}
           <a href="mailto:youssouf.benladjal@gmail.com" className="underline hover:text-slate-500">
             youssouf.benladjal@gmail.com
           </a>
           <br />
-          v0.2
+          v0.3
         </footer>
       </div>
     </div>
