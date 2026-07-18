@@ -53,12 +53,13 @@ const PAPIER_A4 = 9;
 const cmVersPouces = (cm) => cm / 2.54;
 const MARGES_HORIZONTALES = {
   left: cmVersPouces(1.4),
-  right: cmVersPouces(0.6),
+  right: cmVersPouces(0.4),
 };
 
 // Largeurs de colonnes du classeur d'origine (unités de largeur de colonne
-// Excel), gardées distinctes entre A/B/C — pas d'uniformisation.
-const LARGEURS_COLONNES_ORIGINE = { A: 33.14, B: 35.0, C: 31.0 };
+// Excel), gardées distinctes entre A/B/C — pas d'uniformisation. Colonne A
+// ajustée de 33.14 à 35.34 (demande explicite, confirmée avec Youssouf).
+const LARGEURS_COLONNES_ORIGINE = { A: 35.34, B: 35.0, C: 31.0 };
 
 // Écart supplémentaire demandé entre la colonne 1 (A) et la colonne 2 (B) :
 // +2 mm, ajoutés à la largeur de la colonne A (ce qui repousse d'autant le
